@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HTML Text Editor Pro</title>
+
+<!-- Monaco Editor Loader -->
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+
+<!-- Prettier via import map -->
+<script type="importmap">
+{
+  "imports": {
+    "prettier": "https://esm.run/prettier@3.3.3",
+    "prettier/plugins/html": "https://esm.run/prettier@3.3.3/plugins/html",
+    "prettier/plugins/babel": "https://esm.run/prettier@3.3.3/plugins/babel",
+    "prettier/plugins/postcss": "https://esm.run/prettier@3.3.3/plugins/postcss"
+  }
+}
+</script>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    overflow: hidden;
+  }
+  body { display: flex; flex-direction: column; }
+
+  header {
+    background: #252526;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #3c3c3c;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 16px; font-weight: 500; color: #fff; }
+  header h1 span { opacity: 0.5; font-weight: 300; }
+
+  .actions button {
+    background: #0e639c;
+    color: #fff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    margin-left: 8px;
+    transition: background 0.2s;
+  }
+  .actions button:hover { background: #1177bb; }
+  .actions button.secondary { background: #3c3c3c; }
+  .actions button.secondary:hover { background: #505050; }
+  .actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .editor-pane {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    background: #1e1e1e;
+    border-right: 1px solid #3c3c3c;
+    min-width: 0;
+  }
+  .tabs {
+    display: flex;
+    background: #252526;
+    border-bottom: 1px solid #3c3c3c;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 10px 18px;
+    cursor: pointer;
+    border-right: 1px solid #3c3c3c;
+    font-size: 13px;
+    color: #969696;
+    user-select: none;
+    transition: all 0.2s;
+  }
+  .tab:hover { color: #fff; }
+  .tab.active {
+    background: #1e1e1e;
+    color: #fff;
+    border-bottom: 2px solid #0e639c;
+  }
+  .editor-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .editor-wrapper {
+    position: absolute;
+    inset: 0;
+    display: none;
+  }
+  .editor-wrapper.active { display: block; }
+
+  .preview-pane {
+    width: 50%;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .preview-header {
+    background: #252526;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #969696;
+    border-bottom: 1px solid #3c3c3c;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  iframe {
+    flex: 1;
+    border: none;
+    background: #fff;
+    min-height: 0;
+  }
+  .status {
+    font-size: 12px;
+    color: #6a9955;
+  }
+
+  /* Console panel */
+  .console-pane {
+    height: 180px;
+    background: #181818;
+    border-top: 1px solid #3c3c3c;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .console-header {
+    background: #252526;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #969696;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #3c3c3c;
+    flex-shrink: 0;
+  }
+  .console-header .title { font-weight: 500; color: #ccc; }
+  .console-header .badge {
+    background: #0e639c;
+    color: #fff;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    margin-left: 8px;
+  }
+  .console-header button {
+    background: transparent;
+    color: #969696;
+    border: 1px solid #3c3c3c;
+    padding: 3px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    margin-left: 6px;
+  }
+  .console-header button:hover { color: #fff; border-color: #555; }
+
+  .console-output {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 10px;
+    font-family: "Consolas", "Monaco", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .console-line {
+    padding: 3px 6px;
+    border-bottom: 1px solid #252525;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .console-line.log   { color: #d4d4d4; }
+  .console-line.info  { color: #4fc1ff; background: rgba(79,193,255,0.05); }
+  .console-line.warn  { color: #ffcc66; background: rgba(255,204,102,0.08); }
+  .console-line.error { color: #f48771; background: rgba(244,135,113,0.1); }
+  .console-line .prefix {
+    display: inline-block;
+    width: 50px;
+    font-weight: bold;
+    opacity: 0.7;
+  }
+  .console-empty {
+    color: #555;
+    font-style: italic;
+    padding: 10px;
+    text-align: center;
+  }
+
+  /* Loading overlay */
+  .loading {
+    position: fixed;
+    inset: 0;
+    background: #1e1e1e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    color: #888;
+    font-size: 14px;
+    transition: opacity 0.3s;
+  }
+  .loading.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 24px; height: 24px;
+    border: 3px solid #333;
+    border-top-color: #0e639c;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <span>Loading editor...</span>
+</div>
+
+<header>
+  <h1>⚡ HTML Text Editor <span>Pro</span></h1>
+  <div class="actions">
+    <button class="secondary" onclick="resetCode()">Reset</button>
+    <button class="secondary" id="formatBtn" onclick="formatCode()" title="Format with Prettier (Ctrl+Shift+F)">✨ Format</button>
+    <button onclick="runCode()">▶ Run</button>
+    <button onclick="downloadHTML()">⬇ Download</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="editor-pane">
+    <div class="tabs">
+      <div class="tab active" data-lang="html">HTML</div>
+      <div class="tab" data-lang="css">CSS</div>
+      <div class="tab" data-lang="js">JavaScript</div>
+    </div>
+    <div class="editor-container">
+      <div class="editor-wrapper active" id="htmlEditor"></div>
+      <div class="editor-wrapper" id="cssEditor"></div>
+      <div class="editor-wrapper" id="jsEditor"></div>
+    </div>
+  </div>
+
+  <div class="preview-pane">
+    <div class="preview-header">
+      <span>Preview</span>
+      <span class="status" id="status">Ready</span>
+    </div>
+    <iframe id="preview"></iframe>
+  </div>
+</div>
+
+<div class="console-pane">
+  <div class="console-header">
+    <div>
+      <span class="title">Console</span>
+      <span class="badge" id="logCount">0</span>
+    </div>
+    <div>
+      <button onclick="toggleConsole()">▼ Toggle</button>
+      <button onclick="clearConsole()">✕ Clear</button>
+    </div>
+  </div>
+  <div class="console-output" id="consoleOutput">
+    <div class="console-empty">Console output will appear here...</div>
+  </div>
+</div>
+
+<script>
+  // ============ DEFAULTS & STORAGE ============
+  const STORAGE_KEY = 'html-editor-pro-v1';
+
+  const DEFAULTS = {
+    html: `<h1>Hello, World!</h1>
+<p>Welcome to the HTML Text Editor ✨</p>
+<button id="btn">Click me</button>`,
+    css: `body {
+  font-family: sans-serif;
+  text-align: center;
+  padding: 40px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  min-height: 100vh;
+}
+button {
+  background: white;
+  color: #764ba2;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+button:hover { transform: scale(1.05); }`,
+    js: `console.log('Hello from JavaScript!');
+console.warn('This is a warning');
+document.getElementById('btn').addEventListener('click', () => {
+  console.log('Button clicked! 🚀');
+  alert('Hello from JavaScript!');
+});`,
+    activeTab: 'html'
+  };
+
+  function loadState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      return saved ? { ...DEFAULTS, ...saved } : { ...DEFAULTS };
+    } catch (e) {
+      return { ...DEFAULTS };
+    }
+  }
+
+  function saveState() {
+    const state = {
+      html: editors.html.getValue(),
+      css:  editors.css.getValue(),
+      js:   editors.js.getValue(),
+      activeTab: currentLang
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  // ============ MONACO EDITORS ============
+  const editors = {};
+  let currentLang = 'html';
+  const state = loadState();
+
+  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' } });
+
+  require(['vs/editor/editor.main'], function () {
+    // Define dark theme tweaks (optional)
+    monaco.editor.defineTheme('myDark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: { 'editor.background': '#1e1e1e' }
+    });
+
+    const commonOpts = {
+      theme: 'myDark',
+      fontSize: 14,
+      lineNumbers: 'on',
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      automaticLayout: false, // we'll call layout() manually
+      tabSize: 2,
+      wordWrap: 'on',
+      padding: { top: 10 }
+    };
+
+    editors.html = monaco.editor.create(document.getElementById('htmlEditor'), {
+      ...commonOpts,
+      value: state.html,
+      language: 'html'
+    });
+    editors.css = monaco.editor.create(document.getElementById('cssEditor'), {
+      ...commonOpts,
+      value: state.css,
+      language: 'css'
+    });
+    editors.js = monaco.editor.create(document.getElementById('jsEditor'), {
+      ...commonOpts,
+      value: state.js,
+      language: 'javascript'
+    });
+
+    // Auto-save + auto-run on change
+    [editors.html, editors.css, editors.js].forEach(ed => {
+      ed.onDidChangeModelContent(debounce(() => {
+        saveState();
+        runCode();
+      }, 500));
+    });
+
+    // Keyboard shortcut: Ctrl+Shift+F to format
+    [editors.html, editors.css, editors.js].forEach(ed => {
+      ed.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF,
+        formatCode
+      );
+    });
+
+    // Activate saved tab
+    switchTab(state.activeTab);
+
+    // Initial render
+    runCode();
+
+    // Hide loading overlay
+    document.getElementById('loading').classList.add('hidden');
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      Object.values(editors).forEach(ed => ed.layout());
+    });
+  });
+
+  function debounce(fn, delay) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+  }
+
+  // ============ TAB SWITCHING ============
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.lang));
+  });
+
+  function switchTab(lang) {
+    currentLang = lang;
+    document.querySelectorAll('.tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.lang === lang)
+    );
+    document.querySelectorAll('.editor-wrapper').forEach(w =>
+      w.classList.toggle('active', w.id === lang + 'Editor')
+    );
+    // Monaco needs layout() when its container becomes visible
+    if (editors[lang]) setTimeout(() => editors[lang].layout(), 10);
+    saveState();
+  }
+
+  // ============ CONSOLE PANEL ============
+  const consoleOutput = document.getElementById('consoleOutput');
+  const logCountEl = document.getElementById('logCount');
+  let logCount = 0;
+
+  // Listen for messages from the iframe
+  window.addEventListener('message', (e) => {
+    if (!e.data || e.data.source !== 'preview-console') return;
+    addConsoleLine(e.data.level, e.data.args);
+  });
+
+  function addConsoleLine(level, args) {
+    // Remove empty placeholder
+    const empty = consoleOutput.querySelector('.console-empty');
+    if (empty) empty.remove();
+
+    const line = document.createElement('div');
+    line.className = 'console-line ' + level;
+
+    const prefix = document.createElement('span');
+    prefix.className = 'prefix';
+    prefix.textContent = level.toUpperCase();
+    line.appendChild(prefix);
+
+    const content = document.createElement('span');
+    content.textContent = args.map(formatArg).join(' ');
+    line.appendChild(content);
+
+    consoleOutput.appendChild(line);
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+    logCount++;
+    logCountEl.textContent = logCount;
+  }
+
+  function formatArg(arg) {
+    if (arg === null) return 'null';
+    if (arg === undefined) return 'undefined';
+    if (typeof arg === 'string') return arg;
+    if (typeof arg === 'function') return arg.toString();
+    try {
+      return typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg);
+    } catch { return String(arg); }
+  }
+
+  function clearConsole() {
+    consoleOutput.innerHTML = '<div class="console-empty">Console output will appear here...</div>';
+    logCount = 0;
+    logCountEl.textContent = '0';
+  }
+
+  let consoleCollapsed = false;
+  function toggleConsole() {
+    const pane = document.querySelector('.console-pane');
+    consoleCollapsed = !consoleCollapsed;
+    pane.style.height = consoleCollapsed ? '32px' : '180px';
+    // Re-layout editors
+    Object.values(editors).forEach(ed => ed.layout());
+  }
+
+  // ============ PREVIEW ============
+  const preview = document.getElementById('preview');
+  const statusEl = document.getElementById('status');
+
+  // Script injected into iframe to capture console output
+  const CONSOLE_BRIDGE = `
+<script>
+(function() {
+  const send = (level, args) => {
+    try {
+      const safe = Array.from(args).map(a => {
+        if (a instanceof Error) return a.stack || a.message;
+        if (typeof a === 'object') {
+          try { return JSON.parse(JSON.stringify(a)); }
+          catch { return String(a); }
+        }
+        return a;
+      });
+      window.parent.postMessage({ source: 'preview-console', level, args: safe }, '*');
+    } catch(e) {}
+  };
+  ['log','info','warn','error'].forEach(m => {
+    const orig = console[m];
+    console[m] = function(...args) {
+      send(m, args);
+      try { orig.apply(console, args); } catch(e) {}
+    };
+  });
+  window.addEventListener('error', e => {
+    send('error', ['Uncaught: ' + e.message + ' (line ' + e.lineno + ')']);
+  });
+  window.addEventListener('unhandledrejection', e => {
+    send('error', ['Unhandled Promise: ' + (e.reason && e.reason.message || e.reason)]);
+  });
+})();
+<\/script>`;
+
+  function runCode() {
+    const html = editors.html.getValue();
+    const css  = editors.css.getValue();
+    const js   = editors.js.getValue();
+
+    const doc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+${CONSOLE_BRIDGE}
+<style>${css}</style>
+</head>
+<body>
+${html}
+<script>
+try {
+${js}
+} catch(e) { console.error(e.message); }
+<\/script>
+</body>
+</html>`;
+
+    preview.srcdoc = doc;
+    statusEl.textContent = '✓ Updated';
+    setTimeout(() => statusEl.textContent = 'Ready', 1200);
+  }
+
+  // ============ PRETTIER FORMATTING ============
+  let prettierModule = null;
+  let htmlPlugin = null;
+  let babelPlugin = null;
+  let postcssPlugin = null;
+  let prettierReady = false;
+
+  // Lazy-load Prettier on first use
+  async function loadPrettier() {
+    if (prettierReady) return;
+    const btn = document.getElementById('formatBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Loading...';
+
+    try {
+      const [p, h, b, c] = await Promise.all([
+        import('prettier'),
+        import('prettier/plugins/html'),
+        import('prettier/plugins/babel'),
+        import('prettier/plugins/postcss')
+      ]);
+      prettierModule = p;
+      htmlPlugin = h;
+      babelPlugin = b;
+      postcssPlugin = c;
+      prettierReady = true;
+      btn.textContent = '✨ Format';
+    } catch (e) {
+      console.error('Failed to load Prettier:', e);
+      btn.textContent = '❌ Failed';
+      setTimeout(() => { btn.textContent = '✨ Format'; btn.disabled = false; }, 2000);
+      throw e;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function formatCode() {
+    const ed = editors[currentLang];
+    if (!ed) return;
+
+    try {
+      if (!prettierReady) await loadPrettier();
+
+      const code = ed.getValue();
+      const parserMap = { html: 'html', css: 'css', js: 'babel' };
+      const pluginMap = {
+        html: [htmlPlugin.default || htmlPlugin],
+        css:  [postcssPlugin.default || postcssPlugin],
+        js:   [babelPlugin.default || babelPlugin]
+      };
+
+      const formatted = await prettierModule.format(code, {
+        parser: parserMap[currentLang],
+        plugins: pluginMap[currentLang],
+        tabWidth: 2,
+        useTabs: false,
+        singleQuote: false,
+        printWidth: 80
+      });
+
+      ed.setValue(formatted);
+      statusEl.textContent = '✨ Formatted';
+      setTimeout(() => statusEl.textContent = 'Ready', 1200);
+    } catch (e) {
+      console.error('Format error:', e);
+      statusEl.textContent = '⚠ Format error';
+      setTimeout(() => statusEl.textContent = 'Ready', 2000);
+    }
+  }
+
+  // ============ DOWNLOAD & RESET ============
+  function downloadHTML() {
+    const content = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>My Page</title>
+<style>
+${editors.css.getValue()}
+</style>
+</head>
+<body>
+${editors.html.getValue()}
+<script>
+${editors.js.getValue()}
+<\/script>
+</body>
+</html>`;
+    const blob = new Blob([content], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'page.html';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetCode() {
+    if (!confirm('Reset all code to defaults? This cannot be undone.')) return;
+    editors.html.setValue(DEFAULTS.html);
+    editors.css.setValue(DEFAULTS.css);
+    editors.js.setValue(DEFAULTS.js);
+    clearConsole();
+    localStorage.removeItem(STORAGE_KEY);
+    runCode();
+  }
+</script>
+</body>
+</html>
